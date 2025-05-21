@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>لوحة تحكم مدير الملفات</title>
+    <style>
+        body { font-family: Arial; direction: rtl; background: #f7f7f7; }
+        .container { max-width: 700px; margin: 40px auto; background: #fff; padding: 20px; border-radius: 8px; }
+        ul { list-style: none; padding: 0; }
+        li { padding: 8px; border-bottom: 1px solid #eee; }
+        .folder { font-weight: bold; color: #2a5d9f; }
+        .file { color: #444; }
+        .details { font-size: 12px; color: #888; }
+        .actions button { margin-left: 5px; }
+        .toolbar { margin-bottom: 10px; }
+        .preview-modal {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center;
+        }
+        .preview-content {
+            background: #fff; padding: 20px; border-radius: 8px; max-width: 80vw; max-height: 80vh; overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>لوحة تحكم مدير الملفات</h2>
+        <div class="toolbar">
+            <input type="text" id="new-folder-name" placeholder="اسم المجلد الجديد">
+            <button onclick="createFolder()">إنشاء مجلد</button>
+            <input type="file" id="upload-file" style="display:none" onchange="uploadFile(this)">
+            <button onclick="document.getElementById('upload-file').click()">رفع ملف</button>
+        </div>
+        <div id="file-list"></div>
+    </div>
+    <div class="preview-modal" id="preview-modal" onclick="closePreview(event)">
+        <div class="preview-content" id="preview-content"></div>
+    </div>
+    <script>
+        let currentPath = "";
+        async function fetchFiles(path = "") {
+            currentPath = path;
+            const res = await fetch(`/api/list?path=${encodeURIComponent(path)}`);
+            const data = await res.json();
+            renderFiles(data, path);
+        }
+        function renderFiles(data, path) {
+            let html = '';
+            if (path) {
+                const up = path.split('/').slice(0, -1).join('/');
+                html += `<li><a href="#" onclick="fetchFiles('${up}')">⬆️ العودة للخلف</a></li>`;
+            }
+            html += '<ul>';
+            data.folders.forEach(f => {
+                html += `<li class="folder">
+                    📁 ${f}
+                    <span class="actions">
+                        <button onclick="renameItem('${f}', true)">إعادة تسمية</button>
+                        <button onclick="deleteItem('${f}', true)">حذف</button>
+                        <button onclick="moveItem('${f}', true)">نقل</button>
+                        <button onclick="copyItem('${f}', true)">نسخ</button>
+                        <button onclick="showDetails('${f}', true)">تفاصيل</button>
+                        <button onclick="embedYoutube('${f}')">تضمين يوتيوب</button>
+                        <button onclick="fetchFiles('${path ? path + '/' : ''}${f}')">فتح</button>
+                    </span>
+                </li>`;
+            });
+            data.files.forEach(f => {
+                html += `<li class="file">
+                    📄 ${f}
+                    <span class="actions">
+                        <button onclick="renameItem('${f}', false)">إعادة تسمية</button>
+                        <button onclick="deleteItem('${f}', false)">حذف</button>
+                        <button onclick="moveItem('${f}', false)">نقل</button>
+                        <button onclick="copyItem('${f}', false)">نسخ</button>
+                        <button onclick="downloadFile('${f}')">تحميل</button>
+                        <button onclick="showDetails('${f}', false)">تفاصيل</button>
+                        <button onclick="previewFile('${f}')">معاينة</button>
+                    </span>
+                </li>`;
+            });
+            html += '</ul>';
+            document.getElementById('file-list').innerHTML = html;
+        }
+        async function createFolder() {
+            const name = document.getElementById('new-folder-name').value.trim();
+            if (!name) return alert('أدخل اسم المجلد');
+            await fetch('/api/create_folder', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: currentPath, name})
+            });
+            document.getElementById('new-folder-name').value = '';
+            fetchFiles(currentPath);
+        }
+        async function deleteItem(name, isFolder) {
+            if (!confirm('هل أنت متأكد من الحذف؟')) return;
+            await fetch('/api/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: currentPath, name, is_folder: isFolder})
+            });
+            fetchFiles(currentPath);
+        }
+        async function renameItem(name, isFolder) {
+            const newName = prompt('اسم جديد:', name);
+            if (!newName || newName === name) return;
+            await fetch('/api/rename', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: currentPath, name, new_name: newName, is_folder: isFolder})
+            });
+            fetchFiles(currentPath);
+        }
+        async function moveItem(name, isFolder) {
+            const dest = prompt('المسار الجديد (مثال: folder1/folder2):');
+            if (!dest) return;
+            await fetch('/api/move', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: currentPath, name, dest, is_folder: isFolder})
+            });
+            fetchFiles(currentPath);
+        }
+        async function copyItem(name, isFolder) {
+            const dest = prompt('المسار الجديد (مثال: folder1/folder2):');
+            if (!dest) return;
+            await fetch('/api/copy', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: currentPath, name, dest, is_folder: isFolder})
+            });
+            fetchFiles(currentPath);
+        }
+        async function downloadFile(name) {
+            const url = `/api/download?path=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(name)}`;
+            window.open(url, '_blank');
+        }
+        async function showDetails(name, isFolder) {
+            const res = await fetch(`/api/details?path=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(name)}&is_folder=${isFolder}`);
+            const data = await res.json();
+            alert(
+                `الاسم: ${name}\n` +
+                `النوع: ${isFolder ? 'مجلد' : 'ملف'}\n` +
+                `الحجم: ${data.size} بايت\n` +
+                `تاريخ الإنشاء: ${data.created}\n` +
+                `تاريخ آخر تعديل: ${data.modified}`
+            );
+        }
+        async function uploadFile(input) {
+            if (!input.files.length) return;
+            const file = input.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', currentPath);
+            await fetch('/api/upload', { method: 'POST', body: formData });
+            input.value = '';
+            fetchFiles(currentPath);
+        }
+        async function previewFile(name) {
+            const res = await fetch(`/api/preview?path=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(name)}`);
+            const text = await res.text();
+            document.getElementById('preview-content').innerText = text;
+            document.getElementById('preview-modal').style.display = 'flex';
+        }
+        async function embedYoutube(folderName) {
+            const url = prompt('ألصق رابط فيديو يوتيوب:');
+            if (!url) return;
+            await fetch('/api/embed_youtube', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({path: currentPath, folder: folderName, url})
+            });
+            fetchFiles(currentPath);
+        }
+        function closePreview(e) {
+            if (e.target.id === 'preview-modal') {
+                document.getElementById('preview-modal').style.display = 'none';
+            }
+        }
+        fetchFiles();
+    </script>
+</body>
+</html>

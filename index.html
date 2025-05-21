@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>مدير الملفات - عرض فقط</title>
+    <style>
+        body { font-family: Arial; direction: rtl; background: #f7f7f7; }
+        .container { max-width: 600px; margin: 40px auto; background: #fff; padding: 20px; border-radius: 8px; }
+        ul { list-style: none; padding: 0; }
+        li { padding: 8px; border-bottom: 1px solid #eee; }
+        .folder { font-weight: bold; color: #2a5d9f; }
+        .file { color: #444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>مدير الملفات (عرض فقط)</h2>
+        <div id="youtube-embed"></div>
+        <div id="file-list"></div>
+    </div>
+    <script>
+        async function fetchFiles(path = "") {
+            const res = await fetch(`/api/list?path=${encodeURIComponent(path)}`);
+            const data = await res.json();
+            renderFiles(data, path);
+            // تحقق من وجود تضمين يوتيوب
+            if (data.files.includes('youtube_embed.txt')) {
+                const ytRes = await fetch(`/api/youtube_embed?path=${encodeURIComponent(path)}`);
+                const ytUrl = await ytRes.text();
+                renderYoutubeEmbed(ytUrl);
+            } else {
+                renderYoutubeEmbed(null);
+            }
+        }
+        function renderFiles(data, path) {
+            let html = '';
+            if (path) {
+                const up = path.split('/').slice(0, -1).join('/');
+                html += `<li><a href="#" onclick="fetchFiles('${up}')">⬆️ العودة للخلف</a></li>`;
+            }
+            html += '<ul>';
+            data.folders.forEach(f => {
+                html += `<li class="folder"><a href="#" onclick="fetchFiles('${path ? path + '/' : ''}${f}')">📁 ${f}</a></li>`;
+            });
+            data.files.forEach(f => {
+                html += `<li class="file">📄 ${f}</li>`;
+            });
+            html += '</ul>';
+            document.getElementById('file-list').innerHTML = html;
+        }
+        function renderYoutubeEmbed(url) {
+            const container = document.getElementById('youtube-embed');
+            if (!url) {
+                container.innerHTML = '';
+                return;
+            }
+            // استخراج كود الفيديو من الرابط
+            let videoId = null;
+            try {
+                if (url.includes('youtu.be/')) {
+                    videoId = url.split('youtu.be/')[1].split(/[?&]/)[0];
+                } else if (url.includes('youtube.com/watch')) {
+                    const params = new URLSearchParams(url.split('?')[1]);
+                    videoId = params.get('v');
+                }
+            } catch {}
+            if (videoId) {
+                container.innerHTML = `<div style="margin:15px 0"><iframe width="420" height="236" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe></div>`;
+            } else {
+                container.innerHTML = '';
+            }
+        }
+        fetchFiles();
+    </script>
+</body>
+</html>
