@@ -153,13 +153,24 @@ def youtube_embed():
         with open(abs_path, encoding='utf-8') as f:
             return f.read()
 
+@app.route('/')
+def root():
+    # عرض الصفحة الرئيسية index.html
+    return send_from_directory('.', 'index.html')
+
+@app.route('/admin')
+def admin():
+    # عرض لوحة التحكم admin.html
+    return send_from_directory('.', 'admin.html')
+
 @app.route('/<path:filename>')
 def serve_static(filename):
-    # لخدمة ملفات html مباشرة
-    return send_from_directory('.', filename)
+    # لخدمة ملفات html أو ملفات ثابتة أخرى مباشرة
+    file_path = os.path.join('.', filename)
+    if os.path.isfile(file_path):
+        return send_from_directory('.', filename)
+    return "Not Found", 404
 
 if __name__ == '__main__':
     os.makedirs(BASE_DIR, exist_ok=True)
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
